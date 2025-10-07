@@ -10,7 +10,7 @@ app = Flask(__name__)
 # CONFIGURAÇÃO
 # ==============================
 DB_FILE = "data.json"
-API_TOKEN = os.getenv("API_TOKEN", "teste123")  # pega da variável de ambiente, default "teste123"
+AUTH_TOKEN = os.getenv("AUTH_TOKEN", "teste123")
 
 # Diretório e arquivo de logs
 os.makedirs("logs", exist_ok=True)
@@ -45,7 +45,7 @@ def save_data(data):
 # ==============================
 def check_auth():
     auth_header = request.headers.get("Authorization", "")
-    return auth_header == f"Bearer {API_TOKEN}"
+    return auth_header == f"Bearer {AUTH_TOKEN}"
 
 # ==============================
 # ROTAS
@@ -55,7 +55,7 @@ def home():
     return jsonify({
         "ok": True,
         "message": "API Database Controller está online.",
-        "endpoints": ["/data (GET, POST, DELETE)", "/logs (GET)", "/debug-token (GET)"]
+        "endpoints": ["/data (GET, POST, DELETE)", "/logs (GET)"]
     })
 
 @app.route("/data", methods=["GET", "POST", "DELETE"])
@@ -126,16 +126,6 @@ def get_logs():
         return jsonify({"logs": content.splitlines()})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
-
-# ------------------------------
-# DEBUG → mostra qual token o Flask está lendo
-# ------------------------------
-@app.route("/debug-token", methods=["GET"])
-def debug_token():
-    return jsonify({
-        "api_token_env": os.getenv("API_TOKEN"),
-        "api_token_variable": API_TOKEN
-    })
 
 # ==============================
 # MAIN
