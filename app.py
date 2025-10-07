@@ -2,15 +2,31 @@ from flask import Flask, request, jsonify
 import os
 import json
 from datetime import datetime
+import logging
 
 app = Flask(__name__)
 
-# Nome do arquivo JSON onde vamos salvar os dados
+# ==============================
+# CONFIGURAÇÃO
+# ==============================
 DB_FILE = "data.json"
-
-# Token de autenticação
 API_TOKEN = os.getenv("API_TOKEN", "teste123")
 
+# Diretório e arquivo de logs
+os.makedirs("logs", exist_ok=True)
+log_path = os.path.join("logs", "app.log")
+logging.basicConfig(
+    filename=log_path,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+
+def log_message(msg):
+    logging.info(msg)
+
+# ==============================
+# FUNÇÕES DE LEITURA/ESCRITA
+# ==============================
 def load_data():
     if not os.path.exists(DB_FILE):
         return []
@@ -24,25 +40,41 @@ def save_data(data):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
+# ==============================
+# AUTENTICAÇÃO
+# ==============================
+def check_auth():
+    auth_header = request.headers.get("Authorization", "")
+    return auth_header == f"Bearer {API_TOKEN}"
+
+# ==============================
+# ROTAS
+# ==============================
 @app.route("/")
 def home():
     return jsonify({
         "ok": True,
         "message": "API Database Controller está online.",
-        "endpoints": ["/data (GET, POST, DELETE)"]
+        "endpoints": ["/data (GET, POST, DELETE)", "/logs (GET)"]
     })
 
 @app.route("/data", methods=["GET", "POST", "DELETE"])
 def handle_data():
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header != f"Bearer {API_TOKEN}":
+    if not check_auth():
         return jsonify({"ok": False, "error": "Token inválido ou ausente."}), 401
 
     data = load_data()
 
+    # ------------------------------
+    # GET → retorna todos os registros
+    # ------------------------------
     if request.method == "GET":
+        log_message(f"[LIST] {len(data)} registros retornados.")
         return jsonify(data)
 
+    # ------------------------------
+    # POST → adiciona um novo registro
+    # ------------------------------
     elif request.method == "POST":
         body = request.get_json(force=True)
         required_fields = ["url", "title", "filename"]
@@ -57,8 +89,12 @@ def handle_data():
         }
         data.append(entry)
         save_data(data)
+        log_message(f"[ADD] {entry['title']} ({entry['filename']})")
         return jsonify({"ok": True, "message": "Adicionado com sucesso.", "entry": entry})
 
+    # ------------------------------
+    # DELETE → remove registro pelo filename
+    # ------------------------------
     elif request.method == "DELETE":
         body = request.get_json(force=True)
         filename = body.get("filename")
@@ -71,9 +107,29 @@ def handle_data():
         save_data(data)
 
         if before == after:
+            log_message(f"[DELETE] Tentativa de remover '{filename}', mas não encontrado.")
             return jsonify({"ok": False, "error": "Arquivo não encontrado."}), 404
+
+        log_message(f"[DELETE] '{filename}' removido com sucesso.")
         return jsonify({"ok": True, "message": f"Removido '{filename}' com sucesso."})
 
+# ------------------------------
+# LOGS → retorna conteúdo do log
+# ------------------------------
+@app.route("/logs", methods=["GET"])
+def get_logs():
+    if not check_auth():
+        return jsonify({"ok": False, "error": "Token inválido ou ausente."}), 401
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return jsonify({"logs": content.splitlines()})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+# ==============================
+# MAIN
+# ==============================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
